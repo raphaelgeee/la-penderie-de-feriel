@@ -30,8 +30,8 @@ export const Wardrobe: React.FC = () => {
 
         {wardrobe.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-center py-12 px-4 bg-white rounded-3xl shadow-sm">
-            <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">
-              <Plus className="text-[#FF6321]" size={32} />
+            <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mb-4">
+              <Plus className="text-[#C9952C]" size={32} />
             </div>
             <h2 className="text-xl font-medium text-gray-900 mb-2">Ta garde-robe est vide</h2>
             <p className="text-gray-500 text-sm">

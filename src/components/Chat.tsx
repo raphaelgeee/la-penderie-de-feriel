@@ -267,11 +267,8 @@ export const Chat: React.FC = () => {
   return (
     <div className="flex flex-col h-full bg-[#f5f2ed] pb-16">
       {/* Header */}
-      <div className="bg-white/80 backdrop-blur-md sticky top-0 z-10 px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-        <h1 className="text-xl font-serif font-medium text-gray-900">La Penderie</h1>
-        <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
-          <Sparkles className="text-[#FF6321]" size={16} />
-        </div>
+      <div className="bg-white/80 backdrop-blur-md sticky top-0 z-10 px-6 py-3 border-b border-gray-100 flex items-center justify-center">
+        <img src="/logo.svg" alt="Fériel — La Penderie" className="h-10" />
       </div>
 
       {/* Messages */}
@@ -300,7 +297,7 @@ export const Chat: React.FC = () => {
               <div className={clsx(
                 "px-5 py-3.5 rounded-3xl text-[15px] leading-relaxed",
                 msg.role === 'user'
-                  ? "bg-[#FF6321] text-white rounded-tr-sm"
+                  ? "bg-[#C9952C] text-white rounded-tr-sm"
                   : "bg-white text-gray-800 shadow-sm rounded-tl-sm"
               )}>
                 <div className="markdown-body prose prose-sm max-w-none">
@@ -314,7 +311,7 @@ export const Chat: React.FC = () => {
         {isLoading && (
           <div className="flex max-w-[85%] mr-auto items-start">
             <div className="px-5 py-4 bg-white shadow-sm rounded-3xl rounded-tl-sm flex items-center space-x-2">
-              <Loader2 className="animate-spin text-[#FF6321]" size={18} />
+              <Loader2 className="animate-spin text-[#C9952C]" size={18} />
               <span className="text-sm text-gray-500">La Penderie réfléchit...</span>
             </div>
           </div>
@@ -326,7 +323,7 @@ export const Chat: React.FC = () => {
       <div className="bg-white px-4 py-3 border-t border-gray-100 pb-safe">
         {selectedImage && (
           <div className="mb-3 relative inline-block">
-            <div className="w-16 h-16 rounded-xl overflow-hidden border-2 border-[#FF6321]">
+            <div className="w-16 h-16 rounded-xl overflow-hidden border-2 border-[#C9952C]">
               <img src={selectedImage} alt="Selected" className="w-full h-full object-cover" />
             </div>
             <button
@@ -349,7 +346,7 @@ export const Chat: React.FC = () => {
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="p-3 text-gray-400 hover:text-[#FF6321] active:text-[#FF6321] transition-colors rounded-full bg-gray-50 mb-1"
+            className="p-3 text-gray-400 hover:text-[#C9952C] active:text-[#C9952C] transition-colors rounded-full bg-gray-50 mb-1"
           >
             <Camera size={22} />
           </button>
@@ -374,7 +371,7 @@ export const Chat: React.FC = () => {
           <button
             onClick={handleSend}
             disabled={(!input.trim() && !selectedImage) || isLoading}
-            className="p-3.5 bg-[#FF6321] text-white rounded-full disabled:opacity-50 disabled:bg-gray-300 transition-colors mb-1 shadow-sm"
+            className="p-3.5 bg-[#C9952C] text-white rounded-full disabled:opacity-50 disabled:bg-gray-300 transition-colors mb-1 shadow-sm"
           >
             <Send size={20} className="ml-0.5" />
           </button>

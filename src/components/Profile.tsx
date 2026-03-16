@@ -14,7 +14,7 @@ export const Profile: React.FC = () => {
           {/* Photos Section */}
           <div className="bg-white rounded-3xl p-6 shadow-sm">
             <div className="flex items-center space-x-3 mb-4">
-              <Camera className="text-[#FF6321]" size={24} />
+              <Camera className="text-[#C9952C]" size={24} />
               <h2 className="text-lg font-medium text-gray-900">Mes Photos</h2>
             </div>
             
@@ -58,7 +58,7 @@ export const Profile: React.FC = () => {
           {/* Style Preferences */}
           <div className="bg-white rounded-3xl p-6 shadow-sm">
             <div className="flex items-center space-x-3 mb-4">
-              <User className="text-[#FF6321]" size={24} />
+              <User className="text-[#C9952C]" size={24} />
               <h2 className="text-lg font-medium text-gray-900">Mon Style</h2>
             </div>
             <p className="text-gray-600 text-sm">
@@ -69,7 +69,7 @@ export const Profile: React.FC = () => {
           {/* Colors */}
           <div className="bg-white rounded-3xl p-6 shadow-sm">
             <div className="flex items-center space-x-3 mb-4">
-              <Palette className="text-[#FF6321]" size={24} />
+              <Palette className="text-[#C9952C]" size={24} />
               <h2 className="text-lg font-medium text-gray-900">Couleurs Préférées</h2>
             </div>
             <div className="flex flex-wrap gap-2">

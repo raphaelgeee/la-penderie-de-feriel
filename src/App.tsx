@@ -9,7 +9,7 @@ import { Chat } from './components/Chat';
 import { Wardrobe } from './components/Wardrobe';
 import { Profile } from './components/Profile';
 import { BottomNav } from './components/BottomNav';
-import { Lock, Delete } from 'lucide-react';
+import { Delete } from 'lucide-react';
 import { clsx } from 'clsx';
 
 function PinGate({ children }: { children: React.ReactNode }) {
@@ -50,11 +50,8 @@ function PinGate({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-[#f5f2ed] flex flex-col items-center justify-center p-6">
-      <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mb-6 shadow-sm">
-        <Lock className="text-[#FF6321]" size={32} />
-      </div>
-      <h1 className="text-3xl font-serif text-gray-900 mb-2">La Penderie</h1>
-      <p className="text-gray-500 mb-12">Entrez votre code secret</p>
+      <img src="/logo.svg" alt="Fériel — La Penderie" className="w-56 mb-6" />
+      <p className="text-gray-500 mb-10">Entrez votre code secret</p>
 
       <div className="flex space-x-6 mb-12">
         {[0, 1, 2, 3].map((i) => (
@@ -62,7 +59,7 @@ function PinGate({ children }: { children: React.ReactNode }) {
             key={i}
             className={clsx(
               "w-4 h-4 rounded-full border-2 transition-all duration-200",
-              pin.length > i ? "bg-[#FF6321] border-[#FF6321]" : "border-gray-300",
+              pin.length > i ? "bg-[#C9952C] border-[#C9952C]" : "border-gray-300",
               error && "bg-red-500 border-red-500 animate-pulse"
             )}
           />
