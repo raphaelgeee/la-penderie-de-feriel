@@ -1,0 +1,5 @@
+{
+  "name": "La Penderie de Fériel",
+  "description": "Un styliste personnel IA exclusif pour Fériel, avec essayage virtuel et gestion de garde-robe.",
+  "requestFramePermissions": ["camera"]
+}
