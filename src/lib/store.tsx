@@ -36,6 +36,7 @@ interface AppState {
   profile: UserProfile;
   chatHistory: ChatMessage[];
   addClothingItem: (item: Omit<ClothingItem, 'id'>) => void;
+  removeClothingItem: (idOrName: string) => void;
   updateProfile: (updates: Partial<UserProfile>) => void;
   addChatMessage: (msg: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
   clearChat: () => void;
@@ -95,6 +96,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     saveState('wardrobe', newWardrobe);
   };
 
+  const removeClothingItem = (idOrName: string) => {
+    const newWardrobe = wardrobe.filter(
+      (item) => item.id !== idOrName && item.name.toLowerCase() !== idOrName.toLowerCase()
+    );
+    setWardrobe(newWardrobe);
+    saveState('wardrobe', newWardrobe);
+  };
+
   const updateProfile = (updates: Partial<UserProfile>) => {
     const newProfile = { ...profile, ...updates };
     setProfile(newProfile);
@@ -116,7 +125,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   if (!isLoaded) return <div className="flex items-center justify-center h-screen bg-[#f5f2ed]">Chargement...</div>;
 
   return (
-    <AppContext.Provider value={{ wardrobe, profile, chatHistory, addClothingItem, updateProfile, addChatMessage, clearChat }}>
+    <AppContext.Provider value={{ wardrobe, profile, chatHistory, addClothingItem, removeClothingItem, updateProfile, addChatMessage, clearChat }}>
       {children}
     </AppContext.Provider>
   );

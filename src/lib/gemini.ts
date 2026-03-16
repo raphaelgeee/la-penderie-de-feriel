@@ -1,4 +1,5 @@
-import { GoogleGenAI, Type, FunctionDeclaration, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
+import type { ClothingItem, UserProfile } from './store';
 
 export const SYSTEM_PROMPT = `Tu es "La Penderie de Fériel" — un styliste personnel IA créé exclusivement pour Fériel. Tu l'appelles "mon cœur" naturellement dans tes échanges. Jamais d'autre surnom. Jamais de diminutif de son prénom. C'est soit "Fériel", soit "mon cœur".
 
@@ -85,6 +86,10 @@ Maintenant, pour que je puisse te montrer les tenues en entier sur toi :
 • Une photo de ¾ en pied
 Plus j'ai de références, plus les essayages seront fidèles à toi 💛
 
+IMPORTANT: Quand Fériel envoie une photo pendant l'onboarding, utilise l'outil save_profile_photo pour la sauvegarder.
+- Les premières photos (jusqu'à 3) sont des photos de visage (type "face")
+- Les photos suivantes sont des photos de corps (type "body")
+
 Étape 2 — Préférences rapides
 Super mon cœur, maintenant je te connais ! 🎉
 Quelques questions rapides pour que mes suggestions soient pile toi :
@@ -104,6 +109,8 @@ Et côté couleurs :
 Puis :
 Dernière question :
 • Il y a des choses que tu ne veux JAMAIS que je te propose ? (un type de vêtement, un style, une matière...)
+
+IMPORTANT: Dès que Fériel donne ses préférences, utilise l'outil update_preferences pour les sauvegarder.
 
 Étape 3 — Premier vêtement
 Parfait, on est prêtes ! 🚀
@@ -165,8 +172,8 @@ Dis-moi juste :
 3. Tu es où aujourd'hui ? (pour que je check la météo 🌤️)
 
 Process de suggestion
-1. Check météo automatique selon la localisation
-2. Analyse la garde-robe en fonction de l'occasion, la météo, les préférences, et l'historique
+1. Utilise l'outil get_weather pour checker la météo selon la localisation
+2. Analyse la garde-robe (fournie dans le contexte) en fonction de l'occasion, la météo, les préférences, et l'historique
 3. Propose 3 options :
 Voilà 3 looks pour toi mon cœur :
 ✨ OPTION 1 — La Valeur Sûre
@@ -191,7 +198,7 @@ Dis-moi :
 4. Tu pars en cabine ou tu as une grosse valise ?
 
 Process
-1. Météo automatique sur la destination pour chaque jour
+1. Utilise l'outil get_weather pour la météo automatique sur la destination
 2. Planning tenues — un look par jour adapté au programme :
    - Jour voyage : confortable + stylé
    - Jour visite : marche-friendly + photogénique
@@ -301,7 +308,7 @@ Suggestions d'achat (seulement quand pertinent)
 
 CONTRAINTES ABSOLUES
 1. Ne propose JAMAIS de pièces hors de la garde-robe (sauf suggestion d'achat explicite demandée)
-2. Vérifie TOUJOURS la météo avant de proposer une tenue
+2. Vérifie TOUJOURS la météo (via l'outil get_weather) avant de proposer une tenue
 3. Respecte les exclusions définies par Fériel
 4. La pertinence prime sur l'originalité — une tenue parfaitement adaptée > une tenue surprenante
 5. Le visage de Fériel ne doit JAMAIS être déformé dans les images — c'est la règle n°1
@@ -311,64 +318,203 @@ CONTRAINTES ABSOLUES
 9. Ton toujours bienveillant — pro, chaleureux, complice. Jamais condescendant, jamais froid, jamais glauque
 10. Guide Fériel à chaque étape — elle ne doit jamais être perdue ou ne pas savoir quoi faire
 
-Si l'utilisateur demande à générer un essayage virtuel, utilise l'outil "generate_virtual_tryon".
-Si l'utilisateur envoie une photo de vêtement, analyse-la et utilise l'outil "add_clothes_to_wardrobe" pour l'ajouter à la garde-robe.
+OUTILS DISPONIBLES
+- generate_virtual_tryon : Génère un essayage virtuel
+- add_clothes_to_wardrobe : Ajoute un vêtement analysé à la garde-robe
+- remove_clothes_from_wardrobe : Supprime un vêtement de la garde-robe
+- save_profile_photo : Sauvegarde une photo de profil (visage ou corps) pendant l'onboarding
+- update_preferences : Met à jour les préférences de Fériel (style, couleurs, exclusions)
+- get_weather : Récupère la météo d'une ville pour proposer des tenues adaptées
 `;
 
-export const getChatSession = (history: any[] = []) => {
+const FUNCTION_DECLARATIONS = [
+  {
+    name: "generate_virtual_tryon",
+    description: "Génère une image d'essayage virtuel de Fériel portant une tenue spécifique.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        prompt: {
+          type: Type.STRING,
+          description: "Description détaillée de la tenue, de la pose, et du fond pour la génération d'image.",
+        },
+      },
+      required: ["prompt"],
+    },
+  },
+  {
+    name: "add_clothes_to_wardrobe",
+    description: "Ajoute un vêtement analysé à la garde-robe de Fériel. Utilise cet outil dès que Fériel envoie une photo de vêtement et que tu l'as analysé.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        name: { type: Type.STRING, description: "Nom court du vêtement (ex: Jean slim taille haute)" },
+        category: { type: Type.STRING, description: "Catégorie (Hauts, Bas, Robes & Combis, Vestes & Manteaux, Chaussures, Accessoires, Sport & Loungewear)" },
+        color: { type: Type.STRING, description: "Couleur principale" },
+        season: { type: Type.STRING, description: "Saison (été, mi-saison, hiver, toute saison)" },
+        style: { type: Type.STRING, description: "Style (casual, chic, etc.)" },
+        material: { type: Type.STRING, description: "Matière (Denim, Coton, etc.)" },
+      },
+      required: ["name", "category", "color", "season", "style"],
+    },
+  },
+  {
+    name: "remove_clothes_from_wardrobe",
+    description: "Supprime un vêtement de la garde-robe de Fériel par son nom ou ID.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        item_id: { type: Type.STRING, description: "L'ID du vêtement à supprimer" },
+        item_name: { type: Type.STRING, description: "Le nom du vêtement à supprimer (utilisé si l'ID n'est pas connu)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "save_profile_photo",
+    description: "Sauvegarde une photo envoyée par Fériel dans son profil (visage ou corps). À utiliser pendant l'onboarding quand elle envoie ses photos.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        photo_type: {
+          type: Type.STRING,
+          description: "Type de photo : 'face' pour visage, 'body' pour corps entier",
+        },
+      },
+      required: ["photo_type"],
+    },
+  },
+  {
+    name: "update_preferences",
+    description: "Met à jour les préférences de style de Fériel. À utiliser quand elle communique son style, ses couleurs préférées, ou ses exclusions.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        style: { type: Type.STRING, description: "Style vestimentaire (ex: Casual chic, Streetwear, etc.)" },
+        favorite_colors: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Liste des couleurs préférées",
+        },
+        avoid_colors: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Liste des couleurs à éviter",
+        },
+        avoid_items: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Liste des pièces/styles/matières à éviter",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_weather",
+    description: "Récupère la météo actuelle et les prévisions pour une ville donnée. Utilise cet outil AVANT de proposer des tenues.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        city: { type: Type.STRING, description: "Nom de la ville (ex: Paris, Lyon, Marrakech)" },
+        days: { type: Type.NUMBER, description: "Nombre de jours de prévision (1 à 7, défaut: 1)" },
+      },
+      required: ["city"],
+    },
+  },
+];
+
+export const buildSystemPromptWithContext = (wardrobe: ClothingItem[], profile: UserProfile): string => {
+  let context = SYSTEM_PROMPT;
+
+  // Add wardrobe context
+  if (wardrobe.length > 0) {
+    context += `\n\n--- GARDE-ROBE ACTUELLE DE FÉRIEL (${wardrobe.length} pièces) ---\n`;
+    for (const item of wardrobe) {
+      context += `- [ID: ${item.id}] ${item.name} | ${item.category} | ${item.color} | ${item.season} | ${item.style}${item.material ? ` | ${item.material}` : ''}\n`;
+    }
+    context += `\nIMPORTANT: Quand tu proposes des tenues, utilise UNIQUEMENT les pièces listées ci-dessus par leur nom exact.`;
+  } else {
+    context += `\n\n--- GARDE-ROBE ACTUELLE ---\nLa garde-robe est vide. Guide Fériel pour ajouter ses premiers vêtements.`;
+  }
+
+  // Add profile context
+  context += `\n\n--- PROFIL DE FÉRIEL ---\n`;
+  context += `Photos visage : ${profile.facePhotos.length}/3\n`;
+  context += `Photos corps : ${profile.bodyPhotos.length}\n`;
+  context += `Style : ${profile.style || 'Non défini'}\n`;
+  context += `Couleurs préférées : ${profile.favoriteColors.length > 0 ? profile.favoriteColors.join(', ') : 'Non définies'}\n`;
+  context += `Couleurs à éviter : ${profile.avoidColors.length > 0 ? profile.avoidColors.join(', ') : 'Aucune'}\n`;
+  context += `Pièces à éviter : ${profile.avoidItems.length > 0 ? profile.avoidItems.join(', ') : 'Aucune'}\n`;
+  context += `Onboarding terminé : ${profile.onboardingComplete ? 'Oui' : 'Non'}\n`;
+
+  return context;
+};
+
+export const getChatSession = (history: any[] = [], wardrobe: ClothingItem[] = [], profile: UserProfile = { facePhotos: [], bodyPhotos: [], style: '', favoriteColors: [], avoidColors: [], avoidItems: [], onboardingComplete: false }) => {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   return ai.chats.create({
-    model: "gemini-3.1-pro-preview",
+    model: "gemini-2.5-flash",
     config: {
-      systemInstruction: SYSTEM_PROMPT,
+      systemInstruction: buildSystemPromptWithContext(wardrobe, profile),
       temperature: 0.7,
-      tools: [
-        {
-          functionDeclarations: [
-            {
-              name: "generate_virtual_tryon",
-              description: "Génère une image d'essayage virtuel de Fériel portant une tenue spécifique.",
-              parameters: {
-                type: Type.OBJECT,
-                properties: {
-                  prompt: {
-                    type: Type.STRING,
-                    description: "Description détaillée de la tenue, de la pose, et du fond pour la génération d'image.",
-                  },
-                },
-                required: ["prompt"],
-              },
-            },
-            {
-              name: "add_clothes_to_wardrobe",
-              description: "Ajoute un vêtement analysé à la garde-robe de Fériel.",
-              parameters: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING, description: "Nom court du vêtement (ex: Jean slim taille haute)" },
-                  category: { type: Type.STRING, description: "Catégorie (Hauts, Bas, Robes & Combis, Vestes & Manteaux, Chaussures, Accessoires, Sport & Loungewear)" },
-                  color: { type: Type.STRING, description: "Couleur principale" },
-                  season: { type: Type.STRING, description: "Saison (été, mi-saison, hiver, toute saison)" },
-                  style: { type: Type.STRING, description: "Style (casual, chic, etc.)" },
-                  material: { type: Type.STRING, description: "Matière (Denim, Coton, etc.)" },
-                },
-                required: ["name", "category", "color", "season", "style"],
-              },
-            },
-          ],
-        },
-      ],
+      tools: [{ functionDeclarations: FUNCTION_DECLARATIONS }],
     },
     history: history,
   });
+};
+
+export const fetchWeather = async (city: string, days: number = 1): Promise<string> => {
+  try {
+    // Step 1: Geocode city name to coordinates
+    const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=fr`);
+    const geoData = await geoRes.json();
+    if (!geoData.results || geoData.results.length === 0) {
+      return `Impossible de trouver la ville "${city}". Vérifie l'orthographe.`;
+    }
+    const { latitude, longitude, name, country } = geoData.results[0];
+
+    // Step 2: Get weather
+    const weatherRes = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode,windspeed_10m_max&current=temperature_2m,weathercode,windspeed_10m&timezone=auto&forecast_days=${Math.min(days, 7)}`
+    );
+    const weather = await weatherRes.json();
+
+    const weatherCodes: Record<number, string> = {
+      0: 'Ciel dégagé ☀️', 1: 'Principalement dégagé 🌤️', 2: 'Partiellement nuageux ⛅', 3: 'Couvert ☁️',
+      45: 'Brouillard 🌫️', 48: 'Brouillard givrant 🌫️',
+      51: 'Bruine légère 🌦️', 53: 'Bruine 🌦️', 55: 'Bruine forte 🌧️',
+      61: 'Pluie légère 🌦️', 63: 'Pluie 🌧️', 65: 'Pluie forte 🌧️',
+      71: 'Neige légère 🌨️', 73: 'Neige 🌨️', 75: 'Neige forte ❄️',
+      80: 'Averses 🌦️', 81: 'Averses modérées 🌧️', 82: 'Averses violentes ⛈️',
+      95: 'Orage ⛈️', 96: 'Orage avec grêle ⛈️', 99: 'Orage violent ⛈️',
+    };
+
+    let result = `📍 Météo ${name}, ${country}\n`;
+    result += `🌡️ Actuellement : ${weather.current.temperature_2m}°C — ${weatherCodes[weather.current.weathercode] || 'N/A'}\n\n`;
+
+    for (let i = 0; i < weather.daily.time.length; i++) {
+      const date = weather.daily.time[i];
+      const min = weather.daily.temperature_2m_min[i];
+      const max = weather.daily.temperature_2m_max[i];
+      const precip = weather.daily.precipitation_probability_max[i];
+      const code = weather.daily.weathercode[i];
+      const wind = weather.daily.windspeed_10m_max[i];
+      result += `📅 ${date} : ${min}°C – ${max}°C | ${weatherCodes[code] || 'N/A'} | Pluie: ${precip}% | Vent: ${wind} km/h\n`;
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Weather fetch error:", error);
+    return `Désolée, impossible de récupérer la météo pour "${city}" en ce moment.`;
+  }
 };
 
 export const generateImage = async (prompt: string, referenceImages: string[] = []) => {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const parts: any[] = [{ text: prompt }];
-    
-    // Add reference images if provided (face photos)
+
     for (const img of referenceImages) {
       if (img.startsWith('data:image')) {
         const mimeType = img.split(';')[0].split(':')[1];
@@ -391,7 +537,7 @@ export const generateImage = async (prompt: string, referenceImages: string[] = 
         }
       }
     });
-    
+
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
         return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;

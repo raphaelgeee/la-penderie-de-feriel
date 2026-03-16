@@ -1,23 +1,43 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useAppContext } from '../lib/store';
-import { getChatSession, generateImage } from '../lib/gemini';
-import { Send, Image as ImageIcon, Camera, Loader2, Sparkles } from 'lucide-react';
+import { getChatSession, generateImage, fetchWeather } from '../lib/gemini';
+import { Send, Camera, Loader2, Sparkles } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { clsx } from 'clsx';
 
 export const Chat: React.FC = () => {
-  const { chatHistory, addChatMessage, addClothingItem, profile, updateProfile } = useAppContext();
+  const { chatHistory, addChatMessage, addClothingItem, removeClothingItem, profile, updateProfile, wardrobe } = useAppContext();
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize chat session
-  const chatSession = useRef(getChatSession(chatHistory.map(m => ({
-    role: m.role,
-    parts: [{ text: m.text }] // Simplified for history, ideally we'd store full parts
-  }))));
+  // Track wardrobe/profile for session refresh
+  const sessionRef = useRef<ReturnType<typeof getChatSession> | null>(null);
+  const wardrobeRef = useRef(wardrobe);
+  const profileRef = useRef(profile);
+
+  // Initialize or refresh chat session when wardrobe/profile changes
+  const getSession = useCallback(() => {
+    if (
+      !sessionRef.current ||
+      wardrobeRef.current !== wardrobe ||
+      profileRef.current !== profile
+    ) {
+      wardrobeRef.current = wardrobe;
+      profileRef.current = profile;
+      sessionRef.current = getChatSession(
+        chatHistory.map(m => ({
+          role: m.role,
+          parts: [{ text: m.text }]
+        })),
+        wardrobe,
+        profile
+      );
+    }
+    return sessionRef.current;
+  }, [wardrobe, profile, chatHistory]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -39,7 +59,7 @@ export const Chat: React.FC = () => {
 
     const userText = input;
     const userImage = selectedImage;
-    
+
     setInput('');
     setSelectedImage(null);
     setIsLoading(true);
@@ -66,50 +86,45 @@ export const Chat: React.FC = () => {
         });
       }
 
+      const session = getSession();
+
       // Send message
-      let response = await chatSession.current.sendMessage({ message: parts });
-      
+      let response = await session.sendMessage({ message: parts });
+
       let aiText = response.text || '';
       let generatedImageUrl: string | undefined = undefined;
 
-      // Handle function calls
-      if (response.functionCalls && response.functionCalls.length > 0) {
+      // Handle function calls (may be chained)
+      while (response.functionCalls && response.functionCalls.length > 0) {
+        const functionResponses: any[] = [];
+
         for (const call of response.functionCalls) {
+          const args = call.args as any;
+
           if (call.name === 'generate_virtual_tryon') {
-            const prompt = (call.args as any).prompt;
             addChatMessage({
               role: 'model',
-              text: "Je prépare ton essayage virtuel, donne-moi quelques secondes mon cœur... ✨",
+              text: "Je prépare ton essayage virtuel, donne-moi quelques secondes mon coeur... ✨",
             });
-            
-            // Generate image
-            const imgUrl = await generateImage(prompt, profile.facePhotos);
+
+            const imgUrl = await generateImage(args.prompt, profile.facePhotos.concat(profile.bodyPhotos));
             if (imgUrl) {
               generatedImageUrl = imgUrl;
-              
-              // Send function response back to model
-              response = await chatSession.current.sendMessage({
-                message: [{
-                  functionResponse: {
-                    name: call.name,
-                    response: { success: true, message: "Image generated successfully" }
-                  }
-                }]
+              functionResponses.push({
+                functionResponse: {
+                  name: call.name,
+                  response: { success: true, message: "Image generated successfully" }
+                }
               });
-              aiText = response.text || "Et voilà le résultat ! Qu'est-ce que tu en penses ? 🔥";
             } else {
-              response = await chatSession.current.sendMessage({
-                message: [{
-                  functionResponse: {
-                    name: call.name,
-                    response: { success: false, message: "Failed to generate image" }
-                  }
-                }]
+              functionResponses.push({
+                functionResponse: {
+                  name: call.name,
+                  response: { success: false, message: "Failed to generate image" }
+                }
               });
-              aiText = response.text || "Oups, j'ai eu un petit souci pour générer l'image. On réessaie ?";
             }
           } else if (call.name === 'add_clothes_to_wardrobe') {
-            const args = call.args as any;
             if (userImage) {
               addClothingItem({
                 name: args.name,
@@ -120,29 +135,109 @@ export const Chat: React.FC = () => {
                 material: args.material,
                 image: userImage,
               });
-              
-              // Send function response back to model
-              response = await chatSession.current.sendMessage({
-                message: [{
-                  functionResponse: {
-                    name: call.name,
-                    response: { success: true, message: "Item added to wardrobe" }
-                  }
-                }]
+              functionResponses.push({
+                functionResponse: {
+                  name: call.name,
+                  response: { success: true, message: `${args.name} ajouté. Garde-robe: ${wardrobe.length + 1} pièces.` }
+                }
               });
-              aiText = response.text || `✅ ${args.name} ajouté à ta garde-robe !`;
             } else {
-               response = await chatSession.current.sendMessage({
-                message: [{
+              functionResponses.push({
+                functionResponse: {
+                  name: call.name,
+                  response: { success: false, message: "No image provided by user" }
+                }
+              });
+            }
+          } else if (call.name === 'remove_clothes_from_wardrobe') {
+            const idOrName = args.item_id || args.item_name || '';
+            if (idOrName) {
+              removeClothingItem(idOrName);
+              functionResponses.push({
+                functionResponse: {
+                  name: call.name,
+                  response: { success: true, message: `${idOrName} supprimé de la garde-robe.` }
+                }
+              });
+            } else {
+              functionResponses.push({
+                functionResponse: {
+                  name: call.name,
+                  response: { success: false, message: "No item ID or name provided" }
+                }
+              });
+            }
+          } else if (call.name === 'save_profile_photo') {
+            if (userImage) {
+              if (args.photo_type === 'face') {
+                updateProfile({ facePhotos: [...profile.facePhotos, userImage] });
+                functionResponses.push({
                   functionResponse: {
                     name: call.name,
-                    response: { success: false, message: "No image provided by user" }
+                    response: { success: true, message: `Photo visage ${profile.facePhotos.length + 1} sauvegardée.` }
                   }
-                }]
+                });
+              } else if (args.photo_type === 'body') {
+                updateProfile({ bodyPhotos: [...profile.bodyPhotos, userImage] });
+                functionResponses.push({
+                  functionResponse: {
+                    name: call.name,
+                    response: { success: true, message: `Photo corps ${profile.bodyPhotos.length + 1} sauvegardée.` }
+                  }
+                });
+              } else {
+                functionResponses.push({
+                  functionResponse: {
+                    name: call.name,
+                    response: { success: false, message: "Invalid photo_type. Use 'face' or 'body'." }
+                  }
+                });
+              }
+            } else {
+              functionResponses.push({
+                functionResponse: {
+                  name: call.name,
+                  response: { success: false, message: "No image provided by user" }
+                }
               });
-              aiText = response.text || "Je n'ai pas reçu d'image pour ce vêtement mon cœur !";
             }
+          } else if (call.name === 'update_preferences') {
+            const updates: any = {};
+            if (args.style) updates.style = args.style;
+            if (args.favorite_colors) updates.favoriteColors = args.favorite_colors;
+            if (args.avoid_colors) updates.avoidColors = args.avoid_colors;
+            if (args.avoid_items) updates.avoidItems = args.avoid_items;
+
+            // If all preferences have been set, mark onboarding complete
+            const newProfile = { ...profile, ...updates };
+            if (newProfile.style && newProfile.facePhotos.length > 0) {
+              updates.onboardingComplete = true;
+            }
+
+            updateProfile(updates);
+            functionResponses.push({
+              functionResponse: {
+                name: call.name,
+                response: { success: true, message: "Préférences mises à jour." }
+              }
+            });
+          } else if (call.name === 'get_weather') {
+            const weatherData = await fetchWeather(args.city, args.days || 1);
+            functionResponses.push({
+              functionResponse: {
+                name: call.name,
+                response: { success: true, data: weatherData }
+              }
+            });
           }
+        }
+
+        // Send all function responses back
+        if (functionResponses.length > 0) {
+          response = await session.sendMessage({ message: functionResponses });
+          aiText = response.text || aiText;
+        } else {
+          break;
         }
       }
 
@@ -155,23 +250,14 @@ export const Chat: React.FC = () => {
         });
       }
 
-      // Auto-save profile photos if we detect onboarding context
-      // This is a simple heuristic. In a real app, we'd use function calling for this too.
-      if (userImage && chatHistory.length < 10 && aiText.toLowerCase().includes('photo 2')) {
-         updateProfile({ facePhotos: [...profile.facePhotos, userImage] });
-      } else if (userImage && chatHistory.length < 10 && aiText.toLowerCase().includes('photo 3')) {
-         updateProfile({ facePhotos: [...profile.facePhotos, userImage] });
-      } else if (userImage && chatHistory.length < 10 && aiText.toLowerCase().includes('photo corps')) {
-         updateProfile({ facePhotos: [...profile.facePhotos, userImage] }); // Last face photo
-      } else if (userImage && chatHistory.length < 10 && aiText.toLowerCase().includes('préférences')) {
-         updateProfile({ bodyPhotos: [...profile.bodyPhotos, userImage] });
-      }
+      // Force session refresh on next message to pick up new wardrobe/profile state
+      sessionRef.current = null;
 
     } catch (error) {
       console.error("Chat error:", error);
       addChatMessage({
         role: 'model',
-        text: "Désolée mon cœur, j'ai eu un petit bug technique. Tu peux répéter ? 🥺",
+        text: "Désolée mon coeur, j'ai eu un petit bug technique. Tu peux répéter ? 🥺",
       });
     } finally {
       setIsLoading(false);
@@ -195,7 +281,7 @@ export const Chat: React.FC = () => {
             Dis "Bonjour" pour commencer ! 👋
           </div>
         )}
-        
+
         {chatHistory.map((msg) => (
           <div key={msg.id} className={clsx("flex flex-col max-w-[85%]", msg.role === 'user' ? "ml-auto items-end" : "mr-auto items-start")}>
             {msg.image && (
@@ -203,18 +289,18 @@ export const Chat: React.FC = () => {
                 <img src={msg.image} alt="Upload" className="w-full h-auto object-cover" />
               </div>
             )}
-            
+
             {msg.generatedImage && (
               <div className="mb-2 rounded-3xl overflow-hidden shadow-md w-full max-w-[280px]">
-                <img src={msg.generatedImage} alt="Virtual Try-on" className="w-full h-auto object-cover" />
+                <img src={msg.generatedImage} alt="Essayage virtuel" className="w-full h-auto object-cover" />
               </div>
             )}
 
             {msg.text && (
               <div className={clsx(
                 "px-5 py-3.5 rounded-3xl text-[15px] leading-relaxed",
-                msg.role === 'user' 
-                  ? "bg-[#FF6321] text-white rounded-tr-sm" 
+                msg.role === 'user'
+                  ? "bg-[#FF6321] text-white rounded-tr-sm"
                   : "bg-white text-gray-800 shadow-sm rounded-tl-sm"
               )}>
                 <div className="markdown-body prose prose-sm max-w-none">
@@ -224,7 +310,7 @@ export const Chat: React.FC = () => {
             )}
           </div>
         ))}
-        
+
         {isLoading && (
           <div className="flex max-w-[85%] mr-auto items-start">
             <div className="px-5 py-4 bg-white shadow-sm rounded-3xl rounded-tl-sm flex items-center space-x-2">
@@ -243,7 +329,7 @@ export const Chat: React.FC = () => {
             <div className="w-16 h-16 rounded-xl overflow-hidden border-2 border-[#FF6321]">
               <img src={selectedImage} alt="Selected" className="w-full h-full object-cover" />
             </div>
-            <button 
+            <button
               onClick={() => setSelectedImage(null)}
               className="absolute -top-2 -right-2 w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs"
             >
@@ -251,22 +337,23 @@ export const Chat: React.FC = () => {
             </button>
           </div>
         )}
-        
+
         <div className="flex items-end space-x-2">
           <input
             type="file"
             accept="image/*"
+            capture="environment"
             className="hidden"
             ref={fileInputRef}
             onChange={handleImageUpload}
           />
-          <button 
+          <button
             onClick={() => fileInputRef.current?.click()}
-            className="p-3 text-gray-400 hover:text-[#FF6321] transition-colors rounded-full bg-gray-50 mb-1"
+            className="p-3 text-gray-400 hover:text-[#FF6321] active:text-[#FF6321] transition-colors rounded-full bg-gray-50 mb-1"
           >
             <Camera size={22} />
           </button>
-          
+
           <div className="flex-1 bg-gray-50 rounded-3xl border border-gray-200 overflow-hidden flex items-end">
             <textarea
               value={input}
@@ -283,8 +370,8 @@ export const Chat: React.FC = () => {
               style={{ minHeight: '52px' }}
             />
           </div>
-          
-          <button 
+
+          <button
             onClick={handleSend}
             disabled={(!input.trim() && !selectedImage) || isLoading}
             className="p-3.5 bg-[#FF6321] text-white rounded-full disabled:opacity-50 disabled:bg-gray-300 transition-colors mb-1 shadow-sm"
