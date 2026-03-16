@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useAppContext } from '../lib/store';
 import { getChatSession, generateImage, fetchWeather } from '../lib/gemini';
-import { Send, Camera, Loader2, Sparkles } from 'lucide-react';
+import { Send, Camera, Loader2, RotateCcw } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { clsx } from 'clsx';
 
 export const Chat: React.FC = () => {
-  const { chatHistory, addChatMessage, addClothingItem, removeClothingItem, profile, updateProfile, wardrobe } = useAppContext();
+  const { chatHistory, addChatMessage, addClothingItem, removeClothingItem, profile, updateProfile, wardrobe, clearChat } = useAppContext();
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -267,8 +267,15 @@ export const Chat: React.FC = () => {
   return (
     <div className="flex flex-col h-full bg-[#f5f2ed] pb-16">
       {/* Header */}
-      <div className="bg-white/80 backdrop-blur-md sticky top-0 z-10 px-6 py-3 border-b border-gray-100 flex items-center justify-center">
+      <div className="bg-white/80 backdrop-blur-md sticky top-0 z-10 px-6 py-3 border-b border-gray-100 flex items-center justify-between">
+        <div className="w-9" />
         <img src="/logo.svg" alt="Fériel — La Penderie" className="h-10" />
+        <button
+          onClick={() => { if (window.confirm('Effacer toute la conversation ?')) { clearChat(); sessionRef.current = null; } }}
+          className="w-9 h-9 flex items-center justify-center text-gray-400 active:text-gray-600 rounded-full"
+        >
+          <RotateCcw size={18} />
+        </button>
       </div>
 
       {/* Messages */}
